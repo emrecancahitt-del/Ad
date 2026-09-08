@@ -8871,16 +8871,20 @@ function _fmtTime(secs){
 }
 // ── Score submission to leaderboard ──────────────────────────────────────────
 // Works for both guests (localStorage guestId) and logged-in users (token).
-// Fire-and-forget — navigation doesn't wait for the response.
+let _scoreSubmitPromise = null;
+let _scoreSubmitted = false;
+// Keep one submission per match and let menu navigation wait for it.
 function _submitScore() {
+  if (_scoreSubmitted) return _scoreSubmitPromise || Promise.resolve();
   const score = player.score || (player.xp * 10 + player.kills * 120 + player.gold * 3) || player.gold || 0;
-  if (score <= 0 && (!player.kills || player.kills <= 0) && (!player.gold || player.gold <= 0)) return;
+  if (score <= 0 && (!player.kills || player.kills <= 0) && (!player.gold || player.gold <= 0)) return Promise.resolve();
   // Ensure persistent guest ID
   let guestId = localStorage.getItem('fb_guest_id');
   if (!guestId) { guestId = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('fb_guest_id', guestId); }
   const token = localStorage.getItem('fb_auth_token') || '';
+  _scoreSubmitted = true;
   const timeSec = Math.max(0, Math.floor(globalTime / 60));
-  fetch('/api/leaderboard/submit', {
+  _scoreSubmitPromise = fetch('/api/leaderboard/submit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) },
     body: JSON.stringify({
@@ -8892,6 +8896,7 @@ function _submitScore() {
       guestId
     }),
   }).catch(() => {});
+  return _scoreSubmitPromise;
 }
 
 // Called by the HUD "← Menü" button — submits score then navigates
@@ -8905,9 +8910,9 @@ function tryFullscreen() {
 }
 
 function _goToMenu() {
-  _submitScore();
+  const scoreRequest = _submitScore();
   if (typeof _syncGameAccountState === 'function') _syncGameAccountState(true);
-  setTimeout(() => { window.location.href = _BASE; }, 120);
+  Promise.resolve(scoreRequest).finally(() => { window.location.href = _BASE; });
 }
 
 function die() {

@@ -680,7 +680,7 @@ function recordDeathScore(name, score, gold, kills, timeAlive, userObj, updateUs
 
 function persistPlayerScore(player) {
   if (!player || !player.name) return;
-  recordDeathScore(player.name, player.score || player.gold, player.gold, player.kills, 0, player._authUser);
+  recordDeathScore(player.name, player.score || player.gold, player.gold, player.kills, 0, player._authUser, false);
 }
 
 function leaderboard(tab) {
@@ -783,7 +783,7 @@ async function handleApi(request, response, requestPath) {
     if (accountData.users[key]) { sendJson(response, 409, { error: 'Bu kullanıcı adı zaten kayıtlı.' }); return true; }
     if (Object.values(accountData.users).some(user => String(user.email || '').trim().toLowerCase() === email)) { sendJson(response, 409, { error: 'Bu e-posta zaten kayıtlı.' }); return true; }
     const password = hashPassword(String(body.password));
-    const initXp = 0;
+    const initXp = Math.max(0, Math.min(1000000, Math.floor(Number(body.initialXp) || 0)));
     const initCoins = Math.max(1800, Number(body.initialGold || body.initialCoins || 1800));
     const user = {
       id: accountData.nextId++,
@@ -801,8 +801,8 @@ async function handleApi(request, response, requestPath) {
       timePlayed: Math.max(0, Number(body.initialTime) || 0),
       coins: initCoins,
       gold: initCoins,
-      ownedItems: Array.isArray(body.initialOwnedItems) ? [...new Set(body.initialOwnedItems)] : [],
-      equippedItems: (body.initialEquippedItems && typeof body.initialEquippedItems === 'object') ? { ...body.initialEquippedItems } : {},
+      ownedItems: ownedItemsForUser(null, body.initialOwnedItems),
+      equippedItems: equippedItemsForUser(null, body.initialEquippedItems),
       dailyReward: { day: 1, claimedDate: '' },
       claimedLevelRewards: [],
       settings: (body.initialSettings && typeof body.initialSettings === 'object') ? { ...body.initialSettings } : {},
@@ -854,11 +854,17 @@ async function handleApi(request, response, requestPath) {
   
   if (requestPath === '/api/leaderboard/submit' && request.method === 'POST') {
     const authUser = getAuthUser(request);
-    const pName = body.name || (authUser ? authUser.username : 'forestbrawl');
-    const pScore = Number(body.score || body.gold || 0);
-    const pGold = Number(body.gold || body.coins || 0);
-    const pKills = Number(body.kills || 0);
-    const pTime = Number(body.timeAlive || body.timePlayed || 0);
+    const guestId = String(body.guestId || '').trim();
+    const requestedName = String(body.name || '').trim().slice(0, 20);
+    if (!authUser && (!guestId || !requestedName || accountData.users[usernameKey(requestedName)])) {
+      sendJson(response, 400, { error: 'Geçerli bir misafir kimliği ve oyuncu adı gerekli.' });
+      return true;
+    }
+    const pName = authUser ? authUser.username : requestedName;
+    const pScore = Math.min(100000000, Math.max(0, Number(body.score || body.gold || 0)));
+    const pGold = Math.min(100000000, Math.max(0, Number(body.gold || body.coins || 0)));
+    const pKills = Math.min(100000, Math.max(0, Number(body.kills || 0)));
+    const pTime = Math.min(86400, Math.max(0, Number(body.timeAlive || body.timePlayed || 0)));
     recordDeathScore(pName, pScore, pGold, pKills, pTime, authUser, false);
     sendJson(response, 200, { ok: true });
     return true;
@@ -888,10 +894,6 @@ async function handleApi(request, response, requestPath) {
     }
     if (Array.isArray(body.ownedItems)) user.ownedItems = ownedItemsForUser(user, [...(user.ownedItems || []), ...body.ownedItems]);
     if (body.equippedItems && typeof body.equippedItems === 'object') user.equippedItems = equippedItemsForUser(user, { ...(user.equippedItems || {}), ...body.equippedItems });
-    if (typeof body.coins === 'number' && Number.isFinite(body.coins) && body.coins >= 0) {
-      user.coins = Math.max(user.coins || 0, Math.floor(body.coins));
-      user.gold = user.coins;
-    }
     if (body.questProgress && typeof body.questProgress === 'object') applyDailyQuestProgress(user, body.questProgress);
     saveAccountData(true);
     sendJson(response, 200, { ok: true, user: publicUser(user) });
@@ -1100,6 +1102,11 @@ async function handleApi(request, response, requestPath) {
       if (cat) {
         if (item === 'thor' && !canUseThor(user)) {
           sendJson(response, 403, { error: 'Thor derisi yalnızca Basilisk hesabına aittir.' });
+          return true;
+        }
+        const freeItems = new Set(['wolf', 'default', 'ki_tier_0', 'ba_tier_0']);
+        if (['deriler', 'kiliclar', 'baltalar'].includes(cat) && !freeItems.has(item) && !user.ownedItems?.includes(item) && item !== 'thor') {
+          sendJson(response, 403, { error: 'Bu kozmetik hesabında bulunmuyor.' });
           return true;
         }
         user.equippedItems = equippedItemsForUser(user, { ...(user.equippedItems || {}), [cat]: item });
