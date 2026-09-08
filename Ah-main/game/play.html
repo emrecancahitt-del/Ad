@@ -5871,10 +5871,8 @@ function _playRemoteSwing(remote, payload = {}) {
   remote.weaponAngle = bodyAngle;
   const serverAgeMs = Date.now() - Number(payload.serverTime || Date.now());
   const safeAgeMs = Number.isFinite(serverAgeMs) && serverAgeMs >= 0 && serverAgeMs < attackDuration ? serverAgeMs : 0;
-  remote._swingWeapon = remoteWeapon;
-  remote._swingStartMs = now - safeAgeMs;
-  remote._swingDurationMs = attackDuration;
-  remote.isAttacking = true;
+  playAttackAnimation(remote, remoteWeapon, attackDuration);
+  remote._attackAnimation.elapsedMs = safeAgeMs;
   remote.attackTimer = 0;
   remote.attackDuration = attackDuration;
   remote._lastPacketTime = Date.now();
@@ -5917,6 +5915,66 @@ const ATTACK_DUR = {
   2: 54,   // Katana / Pence (daha yumuşak, daha uzun vuruş)
   3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, // Buildings
 };
+
+function playAttackAnimation(actor, weapon = actor.weapon, durationMs = ATTACK_DUR[weapon] || 42) {
+  if (!actor) return;
+  const bodyAngle = Number(actor.bodyAngle ?? actor.angle ?? 0);
+  actor.weapon = Number(weapon) === 2 ? 2 : Number(weapon) || 1;
+  actor.bodyAngle = bodyAngle;
+  actor.weaponAngle = bodyAngle;
+  actor._attackAnimation = {
+    weapon: actor.weapon,
+    durationMs: Math.max(1, Number(durationMs) || 42),
+    elapsedMs: 0,
+  };
+  actor._attackVfxProgress = 0;
+  actor.isAttacking = true;
+}
+
+function updateAttackAnimation(actor, deltaTime = 1) {
+  const animation = actor?._attackAnimation;
+  if (!animation) return;
+  animation.elapsedMs += Math.max(0, Number(deltaTime) || 0) * (1000 / 60);
+  const progress = Math.min(1, animation.elapsedMs / animation.durationMs);
+  const peakT = animation.weapon === 2 ? 0.38 : 0.28;
+  const remap = progress < peakT ? progress / peakT : 1 - (progress - peakT) / (1 - peakT);
+  const swingAngle = animation.weapon >= 3
+    ? Math.sin(progress * Math.PI) * 0.2
+    : Math.sin(remap * Math.PI * 0.5) * (animation.weapon === 2 ? Math.PI / 1.2 : Math.PI / 1.5);
+  const bodyAngle = Number(actor.bodyAngle ?? actor.angle ?? 0);
+  actor.weaponAngle = bodyAngle + swingAngle;
+  actor._attackVfxProgress = progress;
+  if (progress >= 1) {
+    actor.weaponAngle = bodyAngle;
+    actor._attackVfxProgress = 0;
+    actor._attackAnimation = null;
+    actor.isAttacking = false;
+  }
+}
+
+function drawAttackVfx(context, actor, relativeAngle = 0) {
+  const progress = Number(actor?._attackVfxProgress || 0);
+  if (!context || progress <= 0 || progress >= 1 || actor.weapon >= 3) return;
+  const alpha = Math.sin(progress * Math.PI) * 0.82;
+  context.save();
+  context.rotate(relativeAngle);
+  context.globalAlpha = alpha;
+  context.lineCap = 'round';
+  context.strokeStyle = '#fff6a3';
+  context.shadowColor = '#ffd34d';
+  context.shadowBlur = 12;
+  context.lineWidth = actor.weapon === 2 ? 8 : 10;
+  context.beginPath();
+  context.arc(42, 0, actor.weapon === 2 ? 72 : 68, -1.08, 0.55);
+  context.stroke();
+  context.strokeStyle = '#fffde2';
+  context.shadowBlur = 0;
+  context.lineWidth = 2;
+  context.beginPath();
+  context.arc(42, 0, actor.weapon === 2 ? 78 : 74, -1.02, 0.48);
+  context.stroke();
+  context.restore();
+}
 // Per-swing hit tracking: each swing gets a unique ID, each enemy/resource can be hit once per swing
 let _swingId = 0; // increments each new swing
 // Kill cam state
@@ -12801,23 +12859,12 @@ function drawPlayer() {
 
   ctx.save();
 
-  let swingAngle = 0;
-  if (player.isAttacking && player.attackTimer > 0) {
-    const prog = player.attackTimer / player.attackDuration; // 0→1 over attack duration
-    if (player.weapon >= 3) {
-      swingAngle = Math.sin(prog * Math.PI) * 0.2;
-    } else {
-      // Asymmetric swing: reach peak at PEAK_T (fast strike), return slowly after.
-      // prog goes 0→1; remap squishes 0→PEAK_T to 0→1 fast, PEAK_T→1 to 1→0 slow.
-      const PEAK_T = player.weapon === 2 ? 0.38 : 0.28;
-      const remap = prog < PEAK_T
-        ? prog / PEAK_T
-        : 1.0 - (prog - PEAK_T) / (1.0 - PEAK_T);
-      swingAngle = Math.sin(remap * Math.PI * 0.5) * (player.weapon === 2 ? (Math.PI / 1.2) : (Math.PI / 1.5));
-    }
-  }
+  const swingAngle = Number.isFinite(player.weaponAngle)
+    ? player.weaponAngle - player.angle
+    : 0;
 
   ctx.rotate(swingAngle);
+  drawAttackVfx(ctx, player, 0);
 
   // Draw weapon — skin veya tier bazlı görünüm
   if (player.weapon === 1) {
@@ -12963,6 +13010,7 @@ function _interpOtherPlayers() {
   const wallNow = Date.now();
 
   _otherPlayers.forEach((p) => {
+    updateAttackAnimation(p, dt);
     // If trapped by a trap building, freeze in place — zero drift, no teleport to center
     if (p._trappedBy) {
       const _trb = _buildingsMap.get(p._trappedBy) || buildings.find(b => (b._netId === p._trappedBy || b.id === p._trappedBy || b._bLid === p._trappedBy));
@@ -13498,12 +13546,16 @@ function update(timestamp = 0) {
     if (player.weapon < 3) {
       checkHits();
       _checkPvpHits(); // lag compensation: immediate PvP hit prediction (zero RTT)
-      if (_prevT === 0 || player.attackTimer < _prevT) _mpSwing(); // sunucuya swing bildirimi
+      if (_prevT === 0 || player.attackTimer < _prevT) {
+        playAttackAnimation(player, player.weapon);
+        _mpSwing(); // sunucuya swing bildirimi
+      }
     }
   } else {
     if (player.attackTimer > 0) _swingId++; // swing bitti → ID'yi ilerlet
     player.attackTimer = 0;
   }
+  updateAttackAnimation(player, _dt);
   _wasAttacking = attackingNow;
 
   // Buildings
@@ -16976,28 +17028,9 @@ function drawOtherPlayers() {
 
       // ── Weapon + arms — identical style to local player ──────────────────
       {
-        let swAng = 0;
-        if (p._swingStartMs > 0 && p._swingDurationMs > 0) {
-          const nowMs = performance.now();
-          const elapsed = Math.max(0, nowMs - p._swingStartMs);
-          const prog = Math.min(1, elapsed / p._swingDurationMs);
-          const swingWeapon = p._swingWeapon || p.weapon;
-          const peakT = swingWeapon === 2 ? 0.38 : 0.28;
-          const remap = prog < peakT ? prog / peakT : 1 - (prog - peakT) / (1 - peakT);
-          if (swingWeapon >= 3) {
-            swAng = Math.sin(prog * Math.PI) * 0.2;
-          } else {
-            swAng = Math.sin(remap * Math.PI * 0.5) * (swingWeapon === 2 ? (Math.PI / 1.2) : (Math.PI / 1.5));
-          }
-          p.weaponAngle = (p.bodyAngle ?? p.angle ?? 0) + swAng;
-          if (prog >= 1) {
-            p.isAttacking = false;
-            p.attackTimer = 0;
-            p._swingStartMs = 0;
-            p._swingDurationMs = 0;
-          }
-        }
+        const swAng = Number.isFinite(p.weaponAngle) ? p.weaponAngle - (p.bodyAngle ?? p.angle ?? 0) : 0;
         ctx.save(); ctx.rotate(swAng);
+        drawAttackVfx(ctx, p, 0);
 
         // Weapon (only for axe/sword, not building items)
         if (p.weapon === 1 || p.weapon === 2) {
