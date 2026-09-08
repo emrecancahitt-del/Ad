@@ -5869,8 +5869,10 @@ function _playRemoteSwing(remote, payload = {}) {
   remote.weapon = remoteWeapon;
   remote.bodyAngle = bodyAngle;
   remote.weaponAngle = bodyAngle;
+  const serverAgeMs = Date.now() - Number(payload.serverTime || Date.now());
+  const safeAgeMs = Number.isFinite(serverAgeMs) && serverAgeMs >= 0 && serverAgeMs < attackDuration ? serverAgeMs : 0;
   remote._swingWeapon = remoteWeapon;
-  remote._swingStartMs = now - Math.max(0, Date.now() - Number(payload.serverTime || Date.now()));
+  remote._swingStartMs = now - safeAgeMs;
   remote._swingDurationMs = attackDuration;
   remote.isAttacking = true;
   remote.attackTimer = 0;

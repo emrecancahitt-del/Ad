@@ -2273,7 +2273,7 @@ io.on('connection', (socket) => {
     if ((attacker.hp ?? 250) <= 0) attacker.hp = 250;
     const weapon = Number(data.weapon) === 2 ? 2 : 1;
     const now = Date.now();
-    const swingCooldown = weapon === 2 ? 900 : 700;
+    const swingCooldown = weapon === 2 ? 54 : 42;
     if (now - (attacker.lastSwingAt || 0) < swingCooldown) return;
     const swingId = Number.isFinite(Number(data.swingId)) ? Number(data.swingId) : null;
     if (swingId !== null && attacker.lastSwingId === swingId) return;
@@ -2294,7 +2294,7 @@ io.on('connection', (socket) => {
       at: now,
       swingId: swingId ?? now,
       serverTime: now,
-      durationMs: weapon === 2 ? 150 : 125
+      durationMs: weapon === 2 ? 54 : 42
     });
     const attackerX = Number(attacker.x) || 0, attackerY = Number(attacker.y) || 0;
     attacker.angle = angle;
