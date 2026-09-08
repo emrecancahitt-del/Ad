@@ -5931,10 +5931,14 @@ function playAttackAnimation(actor, weapon = actor.weapon, durationMs = ATTACK_D
   actor.isAttacking = true;
 }
 
-function updateAttackAnimation(actor, deltaTime = 1) {
+function updateAttackAnimation(actor, deltaSeconds = 1 / 60) {
   const animation = actor?._attackAnimation;
   if (!animation) return;
-  animation.elapsedMs += Math.max(0, Number(deltaTime) || 0) * (1000 / 60);
+  animation.elapsedMs += Math.max(0, Number(deltaSeconds) || 0) * 1000;
+        if (_prevT === 0 || player.attackTimer < _prevT) {
+          playAttackAnimation(player, player.weapon, ATTACK_DUR[player.weapon] || 42);
+          _mpSwing(); // sunucuya swing bildirimi
+        }
   const progress = Math.min(1, animation.elapsedMs / animation.durationMs);
   const peakT = animation.weapon === 2 ? 0.38 : 0.28;
   const remap = progress < peakT ? progress / peakT : 1 - (progress - peakT) / (1 - peakT);
@@ -13555,7 +13559,7 @@ function update(timestamp = 0) {
     if (player.attackTimer > 0) _swingId++; // swing bitti → ID'yi ilerlet
     player.attackTimer = 0;
   }
-  updateAttackAnimation(player, _dt);
+  updateAttackAnimation(player, _dt / 60);
   _wasAttacking = attackingNow;
 
   // Buildings
