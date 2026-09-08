@@ -2584,6 +2584,7 @@ io.on('connection', (socket) => {
   }
 
   const SERVER_BUILD_LIMITS = { 3: 25, 4: 7, 5: 12, 6: 8, 7: 4, 8: 35, 9: 12, 10: 4 };
+  const TRAP_MAX_HP = 240;
 
   socket.on('place_building', (data = {}) => {
     const bType = Number(data.type) || 3;
@@ -2603,8 +2604,8 @@ io.on('connection', (socket) => {
     const owner = players.get(socket.id);
     const building = { ...data, ownerId: socket.id, ownerClanId: owner?.clanId || '' };
     if (bType === 6) {
-      building.maxHp = Math.max(1800, Number(data.maxHp) || 0);
-      building.hp = Math.min(building.maxHp, Math.max(building.maxHp * 0.9, Number(data.hp) || 0));
+      building.maxHp = TRAP_MAX_HP;
+      building.hp = Math.min(TRAP_MAX_HP, Math.max(TRAP_MAX_HP * 0.9, Number(data.hp) || 0));
     }
     buildings.set(id, building);
     socket.emit('build_ack', { clientId: data.id, serverId: id });
@@ -2626,8 +2627,8 @@ io.on('connection', (socket) => {
       }
       const building = { ...data.building, ownerId: socket.id, ownerClanId: players.get(socket.id)?.clanId || '' };
       if (bType === 6) {
-        building.maxHp = Math.max(1800, Number(data.building?.maxHp) || 0);
-        building.hp = Math.min(building.maxHp, Math.max(building.maxHp * 0.9, Number(data.building?.hp) || 0));
+        building.maxHp = TRAP_MAX_HP;
+        building.hp = Math.min(TRAP_MAX_HP, Math.max(TRAP_MAX_HP * 0.9, Number(data.building?.hp) || 0));
       }
       buildings.set(data.id, building);
       relayToOthers(socket, 'build', { id: data.id, building });
