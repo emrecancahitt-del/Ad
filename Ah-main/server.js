@@ -309,6 +309,25 @@ function writeSqliteSnapshot(snapshot) {
   }
 }
 
+const BASILISK_USERNAME_KEY = 'basilisk';
+function canUseThor(user) {
+  return Boolean(user && usernameKey(user.username) === BASILISK_USERNAME_KEY);
+}
+
+function ownedItemsForUser(user, items) {
+  const ownedItems = Array.isArray(items) ? [...new Set(items.map(String))] : [];
+  return canUseThor(user) ? ownedItems : ownedItems.filter(itemId => itemId !== 'thor');
+}
+
+function equippedItemsForUser(user, items) {
+  const equippedItems = items && typeof items === 'object' ? { ...items } : {};
+  if (!canUseThor(user)) {
+    if (equippedItems.deriler === 'thor') equippedItems.deriler = 'wolf';
+    if (equippedItems.profil_avatar === 'thor') equippedItems.profil_avatar = 'wolf';
+  }
+  return equippedItems;
+}
+
 function loadAccountData() {
   const parsed = readSqliteSnapshot();
   if (parsed && typeof parsed === 'object') {
@@ -317,7 +336,7 @@ function loadAccountData() {
     for (const [k, u] of Object.entries(rawUsers)) {
       if (u && typeof u === 'object' && u.username && (u.hash || u.password)) {
         const uKey = String(u.username).trim().toLowerCase();
-        cleanUsers[uKey] = {
+        const loadedUser = {
           id: u.id || 1,
           username: u.username,
           email: u.email || '',
@@ -334,8 +353,8 @@ function loadAccountData() {
           score: Math.max(0, Number(u.score || 0)),
           bestScore: Math.max(0, Number(u.bestScore || u.score || 0)),
           timePlayed: Math.max(0, Number(u.timePlayed || 0)),
-          ownedItems: Array.isArray(u.ownedItems) ? [...new Set(u.ownedItems)] : [],
-          equippedItems: (u.equippedItems && typeof u.equippedItems === 'object') ? { ...u.equippedItems } : {},
+          ownedItems: [],
+          equippedItems: {},
           questProgress: (u.questProgress && typeof u.questProgress === 'object') ? { ...u.questProgress } : {},
           claimedQuests: Array.isArray(u.claimedQuests) ? [...new Set(u.claimedQuests)] : [],
           dailyQuests: (u.dailyQuests && typeof u.dailyQuests === 'object') ? u.dailyQuests : null,
@@ -347,6 +366,9 @@ function loadAccountData() {
           lastLoginAt: u.lastLoginAt || Date.now(),
           lastMatchAt: u.lastMatchAt || u.lastLoginAt || u.createdAt || Date.now()
         };
+        loadedUser.ownedItems = ownedItemsForUser(loadedUser, u.ownedItems);
+        loadedUser.equippedItems = equippedItemsForUser(loadedUser, u.equippedItems);
+        cleanUsers[uKey] = loadedUser;
       }
     }
     accountData = {
@@ -457,8 +479,8 @@ function publicUser(user) {
     xp: user.xp || 0,
     xpProgress: rInfo.xpProgress,
     xpToNextRank: rInfo.xpToNextRank,
-    ownedItems: user.ownedItems || [],
-    equippedItems: user.equippedItems || {},
+    ownedItems: ownedItemsForUser(user, user.ownedItems),
+    equippedItems: equippedItemsForUser(user, user.equippedItems),
     settings: user.settings || {},
     coins: user.coins ?? 1500,
     gold: user.coins ?? 1500,
@@ -468,8 +490,8 @@ function publicUser(user) {
     claimedLevelRewards: user.claimedLevelRewards || [],
     dailyReward: dailyRewardState(user),
     profileCosmetics: {
-      avatarId: user.equippedItems?.profil_avatar || 'wolf',
-      skinId: user.equippedItems?.deriler || 'wolf',
+      avatarId: equippedItemsForUser(user, user.equippedItems).profil_avatar || 'wolf',
+      skinId: equippedItemsForUser(user, user.equippedItems).deriler || 'wolf',
       effectId: user.equippedItems?.profil_efekt || user.equippedItems?.efektler || 'effect_none',
       frameId: user.equippedItems?.profil_cerceve || 'frame_woodland'
     },
@@ -864,8 +886,8 @@ async function handleApi(request, response, requestPath) {
         }
       }
     }
-    if (Array.isArray(body.ownedItems)) user.ownedItems = [...new Set([...(user.ownedItems || []), ...body.ownedItems.map(String)])];
-    if (body.equippedItems && typeof body.equippedItems === 'object') user.equippedItems = { ...(user.equippedItems || {}), ...body.equippedItems };
+    if (Array.isArray(body.ownedItems)) user.ownedItems = ownedItemsForUser(user, [...(user.ownedItems || []), ...body.ownedItems]);
+    if (body.equippedItems && typeof body.equippedItems === 'object') user.equippedItems = equippedItemsForUser(user, { ...(user.equippedItems || {}), ...body.equippedItems });
     if (typeof body.coins === 'number' && Number.isFinite(body.coins) && body.coins >= 0) {
       user.coins = Math.max(user.coins || 0, Math.floor(body.coins));
       user.gold = user.coins;
@@ -1056,10 +1078,10 @@ async function handleApi(request, response, requestPath) {
     if (!user) sendJson(response, 401, { error: 'Oturum gereklidir.' });
     else {
       if (Array.isArray(body.ownedItems)) {
-        user.ownedItems = [...new Set([...(user.ownedItems || []), ...body.ownedItems])];
+        user.ownedItems = ownedItemsForUser(user, [...(user.ownedItems || []), ...body.ownedItems]);
       }
       if (body.equippedItems && typeof body.equippedItems === 'object') {
-        user.equippedItems = { ...user.equippedItems, ...body.equippedItems };
+        user.equippedItems = equippedItemsForUser(user, { ...user.equippedItems, ...body.equippedItems });
       }
       if (typeof body.coins === 'number' && body.coins >= 0) {
         user.coins = Math.max(user.coins || 0, body.coins);
@@ -1076,7 +1098,11 @@ async function handleApi(request, response, requestPath) {
       const cat = String(body.category || '');
       const item = String(body.itemId || '');
       if (cat) {
-        user.equippedItems = { ...(user.equippedItems || {}), [cat]: item };
+        if (item === 'thor' && !canUseThor(user)) {
+          sendJson(response, 403, { error: 'Thor derisi yalnızca Basilisk hesabına aittir.' });
+          return true;
+        }
+        user.equippedItems = equippedItemsForUser(user, { ...(user.equippedItems || {}), [cat]: item });
         saveAccountData(true);
       }
       sendJson(response, 200, { success: true, equippedItems: user.equippedItems });
@@ -1108,7 +1134,9 @@ async function handleApi(request, response, requestPath) {
         return true;
       }
       const cost = Math.max(0, Number(body.cost) || 0);
-      if (!itemId) {
+      if (itemId === 'thor' && !canUseThor(user)) {
+        sendJson(response, 403, { error: 'Thor derisi yalnızca Basilisk hesabına aittir.' });
+      } else if (!itemId) {
         sendJson(response, 400, { error: 'Geçersiz eşya.' });
       } else if ((user.coins || 0) < cost) {
         sendJson(response, 400, { error: 'Yetersiz altın.' });
@@ -2018,8 +2046,10 @@ io.on('connection', (socket) => {
     const initialScore = Number(data.score ?? data.sc ?? 0) || 0;
     const initialGold = Math.max(0, Number(data.gold ?? 100) || 0);
     const initialXp = Math.max(0, Number(authUser?.xp ?? data.xp ?? 0) || 0);
+    const requestedSkin = String(data.skin || 'default');
     const state = {
       ...data,
+      skin: requestedSkin === 'thor' && !canUseThor(authUser) ? 'wolf' : requestedSkin,
       name: playerName,
       rk: playerRank.visualRankId,
       rankId: playerRank.rankId,
@@ -2187,6 +2217,7 @@ io.on('connection', (socket) => {
     for (const key of ['x', 'y', 'angle', 'vx', 'vy', 'isAttacking', 'attackTimer', 'attackDuration', 'weapon', 'axeTier', 'swordTier', 'team', 'color', 'skin', 'acc', 'buildX', 'buildY']) {
       if (key === 'x' && Number.isFinite(acceptedX)) player.x = acceptedX;
       else if (key === 'y' && Number.isFinite(acceptedY)) player.y = acceptedY;
+      else if (key === 'skin' && data[key] !== undefined) player.skin = String(data[key]) === 'thor' && !canUseThor(player._authUser) ? 'wolf' : String(data[key]);
       else if (data[key] !== undefined) player[key] = data[key];
     }
     for (const key of ['kills', 'gold']) {

@@ -3192,9 +3192,13 @@
             if (!raw || typeof raw !== 'object') return getEquippedItems();
             return Object.fromEntries(Object.entries(raw).filter(([, v]) => v != null && String(v).trim() !== '').map(([k, v]) => [String(k), String(v)]));
         }
+        function isBasiliskAccount() {
+            return Boolean(_authUser && String(_authUser.username || '').trim().toLocaleLowerCase('tr-TR') === 'basilisk');
+        }
+
         function isItemOwned(item) {
             if (!item) return false;
-            if (item.id === 'thor') return true;
+            if (item.id === 'thor') return isBasiliskAccount();
             if (item.free || item.cost === 0) return true;
             return getOwnedItems().includes(item.id);
         }
