@@ -1200,6 +1200,24 @@ const server = http.createServer((request, response) => {
 });
 
 function serveStatic(request, response, requestPath) {
+  if (requestPath === '/.well-known/assetlinks.json') {
+    const assetLinksPath = path.join(root, '.well-known', 'assetlinks.json');
+    fs.readFile(assetLinksPath, (error, data) => {
+      if (error) {
+        response.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
+        response.end('{"error":"Not found"}');
+        return;
+      }
+      response.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        'X-Content-Type-Options': 'nosniff',
+      });
+      response.end(data);
+    });
+    return;
+  }
+
   let relative = requestPath === '/' ? 'index.html' : requestPath.replace(/^\/+/, '');
   if (relative.startsWith('game/')) relative = relative.slice(5);
   else if (relative.startsWith('game\\')) relative = relative.slice(5);

@@ -1,11 +1,10 @@
-const CACHE_NAME = 'forestbrawl-shell-v1';
+const CACHE_NAME = 'forestbrawl-shell-v3';
 const APP_SHELL = [
   './',
   './index.html',
   './play.html',
   './manifest.json',
-  './icon-192.png',
-  './icon-512.png'
+  './icon.jpg'
 ];
 
 self.addEventListener('install', event => {
