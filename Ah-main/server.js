@@ -1206,7 +1206,8 @@ function serveStatic(request, response, requestPath) {
   if (relative === '') relative = 'index.html';
 
   const blockedPath = /(^|[\\/])(?:\.|server\.js$|package(?:-lock)?\.json$|forest-data\.json(?:\.bak)?$|ecosystem\.config\.[cm]?js$|render\.yaml$|\.nvmrc$)/i;
-  if (blockedPath.test(relative)) {
+  const isAssetLinks = relative === '.well-known/assetlinks.json';
+  if (!isAssetLinks && blockedPath.test(relative)) {
     response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'X-Content-Type-Options': 'nosniff' });
     response.end('Not found');
     return;
