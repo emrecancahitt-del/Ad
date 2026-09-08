@@ -5856,6 +5856,43 @@ function _drawNameTagCached(ctx, sx, sy, name, rankId, hpRatio, isOwn, t) {
 const _storedAuthUser = JSON.parse(localStorage.getItem('fb_auth_user')||'null');
 let _myRankId = _storedAuthUser ? (_storedAuthUser.rankId ?? 0) : 0;
 const _otherPlayers = new Map(); // id → serverPlayerState
+const _pendingRemoteAttacks = new Map();
+
+function _playRemoteSwing(remote, payload = {}) {
+  if (!remote) return;
+  const remoteWeapon = Number(payload.weapon) === 2 ? 2 : 1;
+  const now = performance.now();
+  const bodyAngle = Number.isFinite(Number(payload.angle))
+    ? Number(payload.angle)
+    : Number(remote.bodyAngle ?? remote.angle ?? 0);
+  const attackDuration = Number(payload.durationMs) || ATTACK_DUR[remoteWeapon] || 42;
+  remote.weapon = remoteWeapon;
+  remote.bodyAngle = bodyAngle;
+  remote.weaponAngle = bodyAngle;
+  remote.isAttacking = true;
+  remote.attackTimer = 0;
+  remote.attackDuration = attackDuration;
+  remote._attackStartMs = now - Math.max(0, Date.now() - Number(payload.serverTime || Date.now()));
+  remote._lastPacketTime = Date.now();
+  remote.angle = bodyAngle;
+  remote._targetAngle = bodyAngle;
+}
+
+function _triggerRemoteSwing(id, payload) {
+  const remote = _otherPlayers.get(id);
+  if (!remote) {
+    _pendingRemoteAttacks.set(id, payload);
+    return;
+  }
+  _playRemoteSwing(remote, payload);
+}
+
+function _applyPendingRemoteSwing(id) {
+  const payload = _pendingRemoteAttacks.get(id);
+  if (!payload) return;
+  _pendingRemoteAttacks.delete(id);
+  _playRemoteSwing(_otherPlayers.get(id), payload);
+}
 let _liveLeaderboardEntries = [];
 // Deferred name tag queue — filled during world rendering, flushed in screen-space after ctx.restore()
 // This guarantees names are always rendered on top of every game object and are pixel-crisp.
@@ -12948,6 +12985,7 @@ function _interpOtherPlayers() {
       if (p._targetX !== undefined) { p.x = p._targetX; p.y = p._targetY; }
       else if (p._sx !== undefined) { p.x = p._sx; p.y = p._sy; }
       if (p._targetAngle !== undefined) p.angle = p._targetAngle;
+      p.bodyAngle = p.angle;
       return;
     }
 
@@ -12980,6 +13018,7 @@ function _interpOtherPlayers() {
     while (da > Math.PI) da -= Math.PI * 2;
     while (da < -Math.PI) da += Math.PI * 2;
     p.angle = (p.angle || 0) + da * (1 - Math.exp(-24 * dt));
+    p.bodyAngle = p.angle;
   });
 }
 
@@ -15493,6 +15532,7 @@ function initMultiplayer() {
         _lastPacketTime: Date.now(),
         _snapshots: [{ t: Date.now(), x: s.x ?? 0, y: s.y ?? 0, a: s.a ?? 0, vx: s.vx || 0, vy: s.vy || 0 }],
       });
+      _applyPendingRemoteSwing(pid);
     });
     // Merge remote buildings — O(1) Map.get yerine O(N) find kaldırıldı
     _buildingsMap.clear(); _campfires.length = 0;
@@ -15636,30 +15676,14 @@ function initMultiplayer() {
           _netSeq: typeof s.sq === 'number' ? s.sq : 0,
         };
         _otherPlayers.set(id, p);
+        _applyPendingRemoteSwing(id);
       }
     }
   });
 
-  _socket.on('player_attacked', ({ id, weapon, angle, serverTime, durationMs }) => {
+  _socket.on('player_attack', ({ id, weapon, angle, serverTime, durationMs } = {}) => {
     if (!id || id === _mySocketId) return;
-    const remote = _otherPlayers.get(id);
-    if (!remote) return;
-    const remoteWeapon = Number(weapon) === 2 ? 2 : 1;
-    const now = performance.now();
-    const prevAngle = Number.isFinite(remote.angle) ? remote.angle : Number.isFinite(remote._targetAngle) ? remote._targetAngle : 0;
-    const attackDuration = Number(durationMs) || ATTACK_DUR[remoteWeapon] || 42;
-    remote.weapon = remoteWeapon;
-    remote.isAttacking = true;
-    remote.attackTimer = 0;
-    remote.attackDuration = attackDuration;
-    remote._attackStartMs = now - Math.max(0, (Date.now() - (serverTime || Date.now())));
-    remote._attackFromAngle = prevAngle;
-    remote._attackToAngle = Number.isFinite(angle) ? angle : prevAngle;
-    remote._lastPacketTime = Date.now();
-    if (Number.isFinite(angle)) {
-      remote.angle = angle;
-      remote._targetAngle = angle;
-    }
+    _triggerRemoteSwing(id, { weapon, angle, serverTime, durationMs });
   });
 
   _socket.on('player_join', ({ id, state }) => {
@@ -15685,6 +15709,7 @@ function initMultiplayer() {
       _sx: _pjS.x ?? 0, _sy: _pjS.y ?? 0,
       _snapshots: [{ t: Date.now(), x: _pjS.x ?? 0, y: _pjS.y ?? 0, a: _pjS.a ?? 0, vx: _pjS.vx || 0, vy: _pjS.vy || 0 }],
     });
+    _applyPendingRemoteSwing(id);
     pushKillFeed(`🟢 ${_pjS.n || _pjS.name || '?'} oyuna katıldı!`);
   });
 
@@ -16934,7 +16959,7 @@ function drawOtherPlayers() {
       ctx.fillStyle = drawOtherPlayers._shadowGrd;
       ctx.beginPath(); ctx.ellipse(4, 17, 31, 10, 0, 0, Math.PI*2); ctx.fill();
 
-      ctx.rotate(p.angle);
+      ctx.rotate(p.bodyAngle ?? p.angle ?? 0);
 
       // ── Accessories drawn BEFORE body (behind body) ──────────────────────
       if (pAcc.a === 'a_halo')     drawPlayerHalo(ctx, globalTime, 35);
@@ -16948,12 +16973,13 @@ function drawOtherPlayers() {
       // ── Weapon + arms — identical style to local player ──────────────────
       {
         let swAng = 0;
-        if (p.isAttacking && p._attackStartMs && p.attackDuration > 0) {
+        if (p._attackStartMs > 0 && p.attackDuration > 0) {
           const nowMs = performance.now();
           const elapsed = Math.max(0, nowMs - p._attackStartMs);
           const prog = Math.min(1, elapsed / p.attackDuration);
           const peakT = p.weapon === 2 ? 0.38 : 0.28;
           const remap = prog < peakT ? prog / peakT : 1 - (prog - peakT) / (1 - peakT);
+          p.weaponAngle = (p.bodyAngle ?? p.angle ?? 0) + swAng;
           if (p.weapon >= 3) {
             swAng = Math.sin(prog * Math.PI) * 0.2;
           } else {

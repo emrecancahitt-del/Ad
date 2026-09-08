@@ -2287,7 +2287,7 @@ io.on('connection', (socket) => {
     attacker.lastSwingAt = now;
     attacker.lastSwingId = swingId;
     attacker.attackUntil = now + swingCooldown;
-    io.emit('player_attacked', {
+    socket.broadcast.emit('player_attack', {
       id: socket.id,
       weapon,
       angle,
