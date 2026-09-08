@@ -5869,10 +5869,12 @@ function _playRemoteSwing(remote, payload = {}) {
   remote.weapon = remoteWeapon;
   remote.bodyAngle = bodyAngle;
   remote.weaponAngle = bodyAngle;
+  remote._swingWeapon = remoteWeapon;
+  remote._swingStartMs = now - Math.max(0, Date.now() - Number(payload.serverTime || Date.now()));
+  remote._swingDurationMs = attackDuration;
   remote.isAttacking = true;
   remote.attackTimer = 0;
   remote.attackDuration = attackDuration;
-  remote._attackStartMs = now - Math.max(0, Date.now() - Number(payload.serverTime || Date.now()));
   remote._lastPacketTime = Date.now();
   remote.angle = bodyAngle;
   remote._targetAngle = bodyAngle;
@@ -16973,22 +16975,24 @@ function drawOtherPlayers() {
       // ── Weapon + arms — identical style to local player ──────────────────
       {
         let swAng = 0;
-        if (p._attackStartMs > 0 && p.attackDuration > 0) {
+        if (p._swingStartMs > 0 && p._swingDurationMs > 0) {
           const nowMs = performance.now();
-          const elapsed = Math.max(0, nowMs - p._attackStartMs);
-          const prog = Math.min(1, elapsed / p.attackDuration);
-          const peakT = p.weapon === 2 ? 0.38 : 0.28;
+          const elapsed = Math.max(0, nowMs - p._swingStartMs);
+          const prog = Math.min(1, elapsed / p._swingDurationMs);
+          const swingWeapon = p._swingWeapon || p.weapon;
+          const peakT = swingWeapon === 2 ? 0.38 : 0.28;
           const remap = prog < peakT ? prog / peakT : 1 - (prog - peakT) / (1 - peakT);
-          p.weaponAngle = (p.bodyAngle ?? p.angle ?? 0) + swAng;
-          if (p.weapon >= 3) {
+          if (swingWeapon >= 3) {
             swAng = Math.sin(prog * Math.PI) * 0.2;
           } else {
-            swAng = Math.sin(remap * Math.PI * 0.5) * (p.weapon === 2 ? (Math.PI / 1.2) : (Math.PI / 1.5));
+            swAng = Math.sin(remap * Math.PI * 0.5) * (swingWeapon === 2 ? (Math.PI / 1.2) : (Math.PI / 1.5));
           }
+          p.weaponAngle = (p.bodyAngle ?? p.angle ?? 0) + swAng;
           if (prog >= 1) {
             p.isAttacking = false;
             p.attackTimer = 0;
-            p._attackStartMs = 0;
+            p._swingStartMs = 0;
+            p._swingDurationMs = 0;
           }
         }
         ctx.save(); ctx.rotate(swAng);
