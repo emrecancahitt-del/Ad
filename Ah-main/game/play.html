@@ -14992,16 +14992,18 @@ function update(timestamp = 0) {
     const _canAfford = player.wood >= _cW && player.stone >= _cS;
     const _gpos = _computeGhostPos();
     const bx = _gpos.x, by = _gpos.y;
+    const _buildTheme = _BUP_THEMES[player.weapon] || { color: '#4db832' };
 
-    // Snap indicator: dashed green ring around the target building
+    // Snap indicator follows the selected building instead of tinting every build green.
     if (_gpos.snapped && _gpos.snapTarget && !_gpos.blocked) {
       const _st = _gpos.snapTarget;
       const _sr = (_SNAP_RADII[_st.type] || 30) + 8;
       ctx.save();
-      ctx.strokeStyle = 'rgba(80,255,120,0.6)';
+      ctx.strokeStyle = _buildTheme.color;
+      ctx.globalAlpha = 0.72;
       ctx.lineWidth = 3;
       ctx.setLineDash([7, 5]);
-      if (_shadowOk) { ctx.shadowColor = '#44ff88'; ctx.shadowBlur = 8; }
+      if (_shadowOk) { ctx.shadowColor = _buildTheme.color; ctx.shadowBlur = 8; }
       ctx.beginPath(); ctx.arc(_st.x, _st.y, _sr, 0, Math.PI * 2); ctx.stroke();
       ctx.setLineDash([]); if (_shadowOk) ctx.shadowBlur = 0;
       ctx.restore();
@@ -15026,12 +15028,12 @@ function update(timestamp = 0) {
     const _costLabel = `🪵${_cW} 🪨${_cS}`;
     const _statusLabel = _gpos.blocked ? '⛔ ALAN DOLU!' : (_gpos.snapped ? '🔗 KENETLENIYOR' : '');
     ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = 3;
-    ctx.fillStyle = _gpos.blocked ? '#ff5555' : (_canAfford ? '#aaffaa' : '#ff8888');
+    ctx.fillStyle = _gpos.blocked ? '#ff5555' : (_canAfford ? _buildTheme.color : '#ff8888');
     ctx.strokeText(_typeLabel, bx, by - 52); ctx.fillText(_typeLabel, bx, by - 52);
     ctx.strokeText(_costLabel, bx, by - 37); ctx.fillText(_costLabel, bx, by - 37);
     if (_statusLabel) {
       ctx.font = 'bold 12px Arial';
-      ctx.fillStyle = _gpos.blocked ? '#ff3333' : '#44ff88';
+      ctx.fillStyle = _gpos.blocked ? '#ff3333' : _buildTheme.color;
       ctx.strokeText(_statusLabel, bx, by - 22); ctx.fillText(_statusLabel, bx, by - 22);
     }
     ctx.restore();
