@@ -2249,7 +2249,15 @@ io.on('connection', (socket) => {
     attacker.lastSwingAt = now;
     attacker.lastSwingId = swingId;
     attacker.attackUntil = now + swingCooldown;
-    io.emit('player_attacked', { id: socket.id, weapon, angle, at: now });
+    io.emit('player_attacked', {
+      id: socket.id,
+      weapon,
+      angle,
+      at: now,
+      swingId: swingId ?? now,
+      serverTime: now,
+      durationMs: weapon === 2 ? 150 : 125
+    });
     const attackerX = Number(attacker.x) || 0, attackerY = Number(attacker.y) || 0;
     attacker.angle = angle;
     for (const [targetId, target] of players) {

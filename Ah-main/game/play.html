@@ -12916,9 +12916,11 @@ function _interpOtherPlayers() {
     if (p._trappedBy) {
       const _trb = _buildingsMap.get(p._trappedBy) || buildings.find(b => (b._netId === p._trappedBy || b.id === p._trappedBy || b._bLid === p._trappedBy));
       if (_trb && _trb.hp > 0) {
-        if (p._trappedX === undefined) { p._trappedX = p.x; p._trappedY = p.y; }
-        p.x = p._trappedX;
-        p.y = p._trappedY;
+        const tx = Number.isFinite(Number(p._trappedX)) ? Number(p._trappedX) : p.x;
+        const ty = Number.isFinite(Number(p._trappedY)) ? Number(p._trappedY) : p.y;
+        const t = 1 - Math.exp(-32 * dt);
+        p.x += (tx - p.x) * t;
+        p.y += (ty - p.y) * t;
         p.vx = 0;
         p.vy = 0;
         return;
@@ -15628,15 +15630,21 @@ function initMultiplayer() {
     }
   });
 
-  _socket.on('player_attacked', ({ id, weapon, angle }) => {
+  _socket.on('player_attacked', ({ id, weapon, angle, serverTime, durationMs }) => {
     if (!id || id === _mySocketId) return;
     const remote = _otherPlayers.get(id);
     if (!remote) return;
     const remoteWeapon = Number(weapon) === 2 ? 2 : 1;
+    const now = performance.now();
+    const prevAngle = Number.isFinite(remote.angle) ? remote.angle : Number.isFinite(remote._targetAngle) ? remote._targetAngle : 0;
+    const attackDuration = Number(durationMs) || ATTACK_DUR[remoteWeapon] || 42;
     remote.weapon = remoteWeapon;
     remote.isAttacking = true;
     remote.attackTimer = 0;
-    remote.attackDuration = ATTACK_DUR[remoteWeapon] || remote.attackDuration || 42;
+    remote.attackDuration = attackDuration;
+    remote._attackStartMs = now - Math.max(0, (Date.now() - (serverTime || Date.now())));
+    remote._attackFromAngle = prevAngle;
+    remote._attackToAngle = Number.isFinite(angle) ? angle : prevAngle;
     remote._lastPacketTime = Date.now();
     if (Number.isFinite(angle)) {
       remote.angle = angle;
@@ -16930,16 +16938,21 @@ function drawOtherPlayers() {
       // ── Weapon + arms — identical style to local player ──────────────────
       {
         let swAng = 0;
-        if (p.isAttacking) {
-          const packetAgeMs = Math.max(0, Date.now() - (p._lastPacketTime || Date.now()));
-          const attackBoost = Math.min(0.32, packetAgeMs / 1200);
-          const prog = p.attackDuration > 0 ? Math.max(0, Math.min(1, (p.attackTimer || 0) + attackBoost)) : 0;
+        if (p.isAttacking && p._attackStartMs && p.attackDuration > 0) {
+          const nowMs = performance.now();
+          const elapsed = Math.max(0, nowMs - p._attackStartMs);
+          const prog = Math.min(1, elapsed / p.attackDuration);
+          const peakT = p.weapon === 2 ? 0.38 : 0.28;
+          const remap = prog < peakT ? prog / peakT : 1 - (prog - peakT) / (1 - peakT);
           if (p.weapon >= 3) {
             swAng = Math.sin(prog * Math.PI) * 0.2;
           } else {
-            const peakT = p.weapon === 2 ? 0.38 : 0.28;
-            const remap = prog < peakT ? prog / peakT : 1 - (prog - peakT) / (1 - peakT);
             swAng = Math.sin(remap * Math.PI * 0.5) * (p.weapon === 2 ? (Math.PI / 1.2) : (Math.PI / 1.5));
+          }
+          if (prog >= 1) {
+            p.isAttacking = false;
+            p.attackTimer = 0;
+            p._attackStartMs = 0;
           }
         }
         ctx.save(); ctx.rotate(swAng);

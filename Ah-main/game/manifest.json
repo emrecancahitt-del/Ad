@@ -1,6 +1,8 @@
 {
   "name": "ForestBrawl.io",
   "short_name": "ForestBrawl",
+  "description": "Ormanda kaynak topla, savunma yapıları kur, düşman oyuncuları alt et ve hayatta kal.",
+  "id": "forestbrawl-io",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",
@@ -9,12 +11,23 @@
   "background_color": "#2a7a1a",
   "theme_color": "#2a7a1a",
   "icons": [
-    { "src": "icon.jpg", "sizes": "1024x1024", "type": "image/jpeg", "purpose": "any maskable" }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
   ],
-  "generatedAt": "2026-08-27T18:54:10.252Z",
+  "screenshots": [
+    {
+      "src": "game.png",
+      "sizes": "1024x1024",
+      "type": "image/jpeg",
+      "form_factor": "wide",
+      "label": "ForestBrawl gameplay"
+    }
+  ],
+  "generatedAt": "2026-09-08T00:00:00.000Z",
   "format": "PNG",
   "categories": [
-    "resources"
+    "game",
+    "survival"
   ],
   "assets": [
     {
