@@ -40,9 +40,9 @@
       "@context": "https://schema.org",
       "@type": "VideoGame",
       "name": "ForestBrawl.fun",
-      "url": "https://forestbrawl.fun/",
-    "image": "https://forestbrawl.fun/icon.jpg",
-    "description": "ForestBrawl: Vahşi ormanda kaynak topla, üs kur, yaratıkları alt et, altın kazan ve çok oyunculu arenada zirveye tırman.",
+            "url": "https://forestbrawl.fun/",
+            "image": "https://forestbrawl.fun/icon-512.png",
+            "description": "ForestBrawl: Vahşi ormanda kaynak topla, üs kur, yaratıkları alt et, altın kazan ve çok oyunculu arenada zirveye tırman.",
       "genre": ["Action", "Survival", "Multiplayer", "IO Game"],
       "gamePlatform": ["Web Browser", "Mobile Browser", "PC"],
       "applicationCategory": "Game",
@@ -61,8 +61,13 @@
     <meta name="theme-color" content="#253818">
     <meta name="msapplication-navbutton-color" content="#253818">
     <link rel="manifest" href="manifest.json">
-    <link rel="icon" type="image/jpeg" href="icon.jpg">
-    <link rel="apple-touch-icon" href="icon.jpg">
+        <link rel="icon" type="image/png" href="icon-192.png">
+        <link rel="apple-touch-icon" href="icon-192.png">
+        <script>
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+            }
+        </script>
     <link rel="preload" href="players/wolf.png" as="image">
     <title>ForestBrawl.io - Çevrimiçi Hayatta Kalma Oyunu</title>
 

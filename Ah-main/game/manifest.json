@@ -16,15 +16,12 @@
   ],
   "screenshots": [
     {
-      "src": "game.png",
+      "src": "game.jpg",
       "sizes": "1024x1024",
       "type": "image/jpeg",
-      "form_factor": "wide",
       "label": "ForestBrawl gameplay"
     }
   ],
-  "generatedAt": "2026-09-08T00:00:00.000Z",
-  "format": "PNG",
   "categories": [
     "game",
     "survival"

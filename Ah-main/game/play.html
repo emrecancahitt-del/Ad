@@ -67,8 +67,13 @@
 <meta name="full-screen" content="yes">
 <!-- socket.io dinamik olarak yüklenir — sadece online modda -->
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="icon.jpg" type="image/jpeg">
-<link rel="apple-touch-icon" href="icon.jpg">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+</script>
 <link rel="preload" href="asset/tree-forest.png" as="image">
 <script src="platform.js" defer></script>
 <script>
